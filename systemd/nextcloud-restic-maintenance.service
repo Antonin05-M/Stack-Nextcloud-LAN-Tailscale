@@ -1,0 +1,10 @@
+# /etc/systemd/system/nextcloud-restic-maintenance.service
+# Maintenance hebdomadaire du dépôt Restic (rétention + prune + check)
+[Unit]
+Description=Nextcloud Restic Repository Maintenance
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/maintenance-restic-nextcloud.sh

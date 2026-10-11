@@ -1,0 +1,16 @@
+# Secrets - jamais versionner
+.env
+*.env
+certbot-dns.env
+
+# Certificats et état Certbot
+certbot/etc/
+certbot/lib/
+certbot/log/
+*.pem
+*.key
+*.crt
+
+# Divers
+.DS_Store
+Thumbs.db

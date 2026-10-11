@@ -1,0 +1,12 @@
+# /etc/systemd/system/nextcloud-restic-backup.timer
+# Déclenchement : chaque jour à 01:00 ( Persistent=true : rattrape un
+# démarrage manqué, ex. VM éteinte à 01:00 -> exécution au prochain boot )
+[Unit]
+Description=Daily Nextcloud Restic Backup
+
+[Timer]
+OnCalendar=*-*-* 01:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

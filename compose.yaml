@@ -1,0 +1,126 @@
+# =============================================================================
+# Stack Nextcloud LAN + Tailscale
+# -----------------------------------------------------------------------------
+# 6 services : MariaDB, Redis, Nextcloud, Cron, ONLYOFFICE, Nginx.
+# Les secrets proviennent de .env (copié depuis .env.example, chmod 600).
+#
+# ⚠️ PLACEHOLDERS à adapter à VOTRE environnement :
+#   - cloud.example.com  -> votre sous-domaine
+#   - 192.168.1.20       -> l'IP de votre VM
+#   - /mnt/data          -> votre montage de disque de données
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # MariaDB — base de données Nextcloud
+  # ---------------------------------------------------------------------------
+  db:
+    image: mariadb:lts
+    restart: unless-stopped
+    command: --transaction-isolation=READ-COMMITTED
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MYSQL_DATABASE}
+      MARIADB_USER: ${MYSQL_USER}
+      MARIADB_PASSWORD: ${MYSQL_PASSWORD}
+      # Mise à niveau automatique du schéma interne au démarrage,
+      # sans copie de sauvegarde inutile à chaque upgrade de l'image.
+      MARIADB_AUTO_UPGRADE: "1"
+      MARIADB_DISABLE_UPGRADE_BACKUP: "1"
+    volumes:
+      - db:/var/lib/mysql
+
+  # ---------------------------------------------------------------------------
+  # Redis — cache + verrouillage transactionnel des fichiers
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Nextcloud (Apache) — branche majeure épinglée : un simple `pull` applique
+  # les correctifs 34.0.x -> 34.0.y sans sauter vers une majeure suivante.
+  # ---------------------------------------------------------------------------
+  nextcloud:
+    image: nextcloud:34-apache
+    restart: unless-stopped
+    depends_on:
+      - db
+      - redis
+    environment:
+      MYSQL_HOST: db
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      REDIS_HOST: redis
+      # Domaines de confiance (IP VM, nom de service, domaine public)
+      NEXTCLOUD_TRUSTED_DOMAINS: "192.168.1.20 nextcloud cloud.example.com"
+      # Nginx est un reverse proxy de confiance : préserver la vraie IP client
+      APACHE_DISABLE_REWRITE_IP: "1"
+      TRUSTED_PROXIES: "172.16.0.0/12"
+      # Limites PHP adaptées aux gros fichiers
+      PHP_MEMORY_LIMIT: 512M
+      PHP_UPLOAD_LIMIT: 10G
+      APACHE_BODY_LIMIT: 10737418240
+    volumes:
+      # Config + apps Nextcloud -> volume Docker (disque système VM)
+      - nextcloud:/var/www/html
+      # Fichiers UTILISATEURS -> disque de données dédié (montage obligatoire,
+      # SANS nofail dans /etc/fstab : voir docs/01-architecture.md)
+      - /mnt/data/nextcloud/data:/var/www/html/data
+
+  # ---------------------------------------------------------------------------
+  # Cron — tâches de fond Nextcloud en mode `cron` (pas AJAX)
+  # ---------------------------------------------------------------------------
+  cron:
+    image: nextcloud:34-apache
+    restart: unless-stopped
+    entrypoint: /cron.sh
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - nextcloud:/var/www/html
+      - /mnt/data/nextcloud/data:/var/www/html/data
+
+  # ---------------------------------------------------------------------------
+  # ONLYOFFICE DocumentServer — édition bureautique, publié sous /editors/
+  # ---------------------------------------------------------------------------
+  onlyoffice:
+    image: onlyoffice/documentserver:9.4
+    restart: unless-stopped
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET}
+      # Le DocumentServer doit pouvoir joindre Nextcloud par son IP privée
+      # (réseau Docker interne) — requis pour le téléchargement des documents.
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_logs:/var/log/onlyoffice
+      - onlyoffice_lib:/var/lib/onlyoffice
+
+  # ---------------------------------------------------------------------------
+  # Nginx — reverse proxy TLS, point d'entrée unique :443
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    depends_on:
+      - nextcloud
+      - onlyoffice
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # Certificats Let's Encrypt gérés par Certbot (challenge DNS-01)
+      - ./certbot/etc:/etc/letsencrypt:ro
+
+volumes:
+  db:
+  nextcloud:
+  onlyoffice_data:
+  onlyoffice_logs:
+  onlyoffice_lib:

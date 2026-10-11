@@ -1,0 +1,13 @@
+# /etc/systemd/system/nextcloud-cert-renew.service
+# Renouvellement du certificat TLS (Let's Encrypt, challenge DNS-01)
+# Type=oneshot : "inactive (dead)" après exécution est un état NORMAL,
+# vérifier status=0/SUCCESS dans journalctl.
+[Unit]
+Description=Nextcloud TLS Certificate Renewal
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/renew-nextcloud-cert.sh
