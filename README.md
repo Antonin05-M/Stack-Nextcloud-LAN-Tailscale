@@ -90,6 +90,7 @@ L'astuce centrale : le nom **`cloud.example.com` est publié dans le DNS public,
 | Secrets dans `.env` (`chmod 600`) | Aucun secret dans le Compose ni dans Git |
 | Restic chiffré + mot de passe conservé hors infra | Sauvegardes illisibles sans la clé, clé hors du SI sauvegardé |
 | Tests de restauration réels (SQL + fichier) | Une sauvegarde non testée n'est pas une sauvegarde |
+| Images épinglées par branche majeure | `compose pull` applique les correctifs de sécurité (ex. PHP2Shell patché en < 1 h) sans saut de version majeure |
 
 ## 📁 Contenu du dépôt
 
